@@ -1,0 +1,108 @@
+# CMFFA模型配置文件
+
+# 数据配置（与论文一致：7:1:2 划分，seed=42）
+# 使用 Gossipcop 时指向 data/gossipcop/；Weibo/Pheme 同理
+data:
+  train_path: "data/gossipcop/train.json"
+  val_path: "data/gossipcop/val.json"
+  test_path: "data/gossipcop/test.json"
+  image_dir: "data/gossipcop/images"
+  max_text_length: 96   # 轻量：再缩一档（128→96），减轻 BERT 算力
+  image_size: 224
+  num_workers: 2   # macOS/MPS 上 10 易抖动、刷 warning；3 稳定，可试 4
+  batch_size: 32   # 配合 grad_accum_steps=2 → 等效 batch=64（论文目标），单步更轻
+  test_batch_size: 50  # 论文4.3.2节：测试时batch_size=50
+  # partial 预计算缓存目录：存 bert_after_layer10、resnet_after_layer3、text_macro、image_macro、attention_mask；训练时跑 BERT 11 + ResNet 4 + 融合，最后 2 epoch 可轻量解冻
+  feature_cache_dir: "data/gossipcop/features_cache"
+
+# 模型配置
+model:
+  # 文本编码器配置（微观特征 - BERT）
+  text_encoder:
+    # 设置为 "auto" 以根据数据集自动选择：
+    #   - Weibo (中文) → bert-base-chinese (按字切分)
+    #   - Pheme/Gossipcop (英文) → bert-base-uncased (WordPiece切分)
+    # 也可以显式指定 "bert-base-chinese" 或 "bert-base-uncased"
+    model_name: "auto"  # 自动根据数据集选择，符合论文要求
+    hidden_size: 768
+    dropout: 0.1
+  
+  # 图像编码器配置（微观特征 - ResNet）
+  image_encoder:
+    model_name: "resnet18"  # 比 ResNet50 快很多，思路不变（仍做图像微观特征）
+    pretrained: true
+    hidden_size: 512
+    dropout: 0.1
+  
+  # CLIP编码器配置（宏观特征）
+  clip:
+    model_name: "ViT-B/16"  # CLIP模型：ViT-B/16
+  
+  # 特征融合配置（轻量：d_l=128→fusion_dim=640，8|640，VAE/memory 更小）
+  fusion:
+    micro_proj_dim: 128  # 再缩一档：d_f=128+512=640，640%8=0
+    latent_dim: 32      # 轻量：VAE 潜在维度
+    memory_length: 8    # 轻量：可学习 memory 长度（论文 50）
+    dropout: 0.1
+  
+  # 注意力配置
+  attention:
+    num_heads: 8  # 论文中Head=8
+    dropout: 0.1
+  
+  # 分类器配置（论文3.4节：除最后一层外，由五个具有ReLU的全连接层组成）
+  # 总共6层FC：前5层带ReLU，最后1层无激活，输出2 logits用于softmax
+  # 输入维度：4 * d_f = 4 * 812 = 3248（论文公式21）
+  classifier:
+    num_classes: 2
+    dropout: 0.3
+
+# 训练配置（论文4.3.2节）
+# 学习率：Weibo 0.001, Pheme 0.002（根据数据集自动调整）
+# 批次大小：训练64，测试50（论文4.3.2节）
+# 训练轮数：20 epoch（论文4.3.2节）
+training:
+  num_epochs: 10  # 加速：10 epoch，总时间约减半（论文 20）
+  # 设置为 "auto" 以根据数据集自动选择学习率：
+  #   - Weibo → 0.001 (论文4.3.2节明确说明)
+  #   - Pheme → 0.002 (论文4.3.2节明确说明)
+  #   - Gossipcop → 0.001 (默认值，论文未明确说明)
+  # 也可以显式指定数值（如 0.001 或 0.002）
+  learning_rate: "auto"  # 自动根据数据集选择，符合论文要求
+  # strict_paper_mode: 严格遵循论文设置
+  # 当strict_paper_mode=true时：
+  #   - 中文文本：严格按字切分（每个字符一个token）
+  #   - 图像预处理：只resize到224x224，无任何增强
+  #   - weight_decay=0（论文未提及）
+  #   - 不使用warmup（论文未提及）
+  #   - 不使用梯度裁剪（论文未提及）
+  strict_paper_mode: true  # 设置为true以严格复现论文实验
+  weight_decay: 1e-4  # strict_paper_mode=true时会被忽略（设为0）
+  warmup_steps: 1000  # 当前训练脚本未使用任何学习率调度器，此项未参与训练（论文未提及warmup）
+  max_grad_norm: 1.0  # strict_paper_mode=true时会被忽略（不使用梯度裁剪）
+  save_dir: "checkpoints"
+  log_dir: "logs"
+  # resume_from: "checkpoints/best_model.pt"   # 从该 checkpoint 继续训练（也可用 --resume 指定）
+  save_every: 5
+  eval_every: 1
+  grad_accum_steps: 2  # 梯度累积：32*2=64 等效 batch（论文目标）
+  device: "cpu"   # 自动选择：有 CUDA 用 cuda，有 Apple Silicon 用 mps，否则 cpu
+  freeze_encoders: true  # 冻结 BERT+ResNet，只训练融合/注意力/VAE/分类器（提速明显）
+  # 折中方案：最后 1–2 个 epoch 只解冻 BERT 最后一层 + ResNet 最后一 block，提升 Fake recall，速度影响小（使用 feature 缓存时不生效）
+  unfreeze_last_layers: true   # 设为 true 时，最后 unfreeze_last_epochs 个 epoch 解冻上述部分
+  unfreeze_last_epochs: 2
+  light_unfreeze_lr: 1e-5      # 解冻部分使用较小学习率
+  # 类别权重：缓解全预测多数类（Fake recall 偏低）。"balanced"=按训练集比例反比；或 [w_real, w_fake] 如 [1, 4] 更强调 Fake
+  class_weight: [1, 3]   # 加大 Fake 权重，减少全预测 Real；若仍全 0 可试 [1, 5] 或 [1, 6]
+  # PGD对抗训练配置（论文要求：对文本嵌入做PGD对抗训练）
+  pgd:
+    enabled: true  # 是否启用PGD对抗训练
+    epsilon: 0.01  # 扰动上限
+    alpha: 0.003   # 每次迭代步长
+    steps: 1       # 轻量：先 1 步跑通，再可改回 3
+
+# 评估配置
+evaluation:
+  metrics: ["accuracy", "precision", "recall", "f1"]
+  save_predictions: true
+  output_dir: "results"

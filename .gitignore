@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+venv/
+.venv/
+env/
+.env/
+
+# IDE / 系统
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# 模型与缓存（体积大，勿上传）
+checkpoints/
+data/*/features_cache/
+
+# 预计算特征缓存
+data/*/features_cache/
+
+# 日志与结果（可选：若希望保留可删掉下面两行）
+logs/
+results/
+
+# 归档与临时
+*.zip
+*.tar.gz
+*.log
+
+# 本地配置覆盖（若有）
+config.local.yaml
+.env.local

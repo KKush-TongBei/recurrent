@@ -1,0 +1,5 @@
+{
+  "source": "FakeNewsNet",
+  "paper_split": "7:1:2",
+  "seed": 42
+}

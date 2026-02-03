@@ -1,0 +1,14 @@
+[
+  {
+    "id": "pheme-1",
+    "text": "Sample rumour tweet text",
+    "image_path": "",
+    "label": 1
+  },
+  {
+    "id": "pheme-2",
+    "text": "Sample non-rumour tweet text",
+    "image_path": "",
+    "label": 0
+  }
+]
