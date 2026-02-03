@@ -93,7 +93,7 @@ training:
   unfreeze_last_epochs: 2
   light_unfreeze_lr: 1e-5      # 解冻部分使用较小学习率
   # 类别权重：缓解全预测多数类（Fake recall 偏低）。"balanced"=按训练集比例反比；或 [w_real, w_fake] 如 [1, 4] 更强调 Fake
-  class_weight: [1, 3]   # 加大 Fake 权重，减少全预测 Real；若仍全 0 可试 [1, 5] 或 [1, 6]
+  class_weight: [1, 4]   # 加大 Fake 权重，减少全预测 Real；若仍全 0 可试 [1, 5] 或 [1, 6]
   # PGD对抗训练配置（论文要求：对文本嵌入做PGD对抗训练）
   pgd:
     enabled: true  # 是否启用PGD对抗训练
